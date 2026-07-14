@@ -407,7 +407,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 newGoal as Map,
               ); //LOGIC Converts returned object into a Map.;
 
-              final id = await DatabaseHelper.instance.insertGoal(//LOGIC : CALLS  INSERT FUNCTION I DATABSE
+              final id = await DatabaseHelper.instance.insertGoal(
+                //LOGIC : CALLS  INSERT FUNCTION I DATABSE
                 subject: newMission['title'].toString(),
                 hours: newMission['hours'] as int,
               );
@@ -416,7 +417,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
               if (!mounted) return;
 
-              setState(() {// reload page
+              setState(() {
+                // reload page
                 _missions.insert(0, newMission);
               });
             }
@@ -633,7 +635,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.track_changes_rounded,
-                          number: "${_missions.length}",//LOGIC: flutter reads from  list
+                          number:
+                              "${_missions.length}", //LOGIC: flutter reads from  list
                           title: "Goals",
                         ),
                       ),
@@ -641,7 +644,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.hourglass_bottom_rounded,
-                          number: "$_totalHours",,//LOGIC: flutter reads from  total hour function
+                          number:
+                              "$_totalHours", //LOGIC: flutter reads from  total hour function
                           title: "Hours",
                         ),
                       ),
@@ -649,7 +653,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.check_circle_rounded,
-                          number: "$_completedCount",//LOGIC: flutter reads from completed  function
+                          number:
+                              "$_completedCount", //LOGIC: flutter reads from completed  function
                           title: "Done",
                         ),
                       ),
@@ -690,8 +695,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               icon: mission['icon'],
                               progress: mission['progress'],
                               isDone: mission['done'],
-                              onToggleDone: () => _toggleMissionDone(index),//LOGIC : flutters executes toggle function
-                              onDelete: () => _deleteMission(index),//LOGIC: flutter executes delete function
+                              onToggleDone: () => _toggleMissionDone(
+                                index,
+                              ), //LOGIC : flutters executes toggle function
+                              onDelete: () => _deleteMission(
+                                index,
+                              ), //LOGIC: flutter executes delete function
                             );
                           }),
                         ),
@@ -705,6 +714,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
 //STATIC
 //reusable widget with specific UI elements
 Widget glassCard({required Widget child}) {
@@ -731,7 +741,8 @@ Widget glassCard({required Widget child}) {
     ),
   );
 }
-//STATIC 
+
+//STATIC
 class StatCardWidget extends StatelessWidget {
   final IconData icon;
   final String number;
@@ -743,10 +754,12 @@ class StatCardWidget extends StatelessWidget {
     required this.number,
     required this.title,
   });
-///STATIC
+
+  ///STATIC
   @override
   Widget build(BuildContext context) {
-    return glassCard(// type of reusable glass card widget
+    return glassCard(
+      // type of reusable glass card widget
       child: Column(
         children: [
           Icon(icon, color: const Color(0xffA87935), size: 26),
@@ -775,7 +788,8 @@ class StatCardWidget extends StatelessWidget {
     );
   }
 }
-//STATIC 
+
+//STATIC
 Widget missionCard({
   required String title,
   required String subtitle,
@@ -860,7 +874,7 @@ Widget missionCard({
                   color: Color(0xffC98A8A),
                   size: 21,
                 ),
-                onPressed: onDelete,// LOGIC 
+                onPressed: onDelete, // LOGIC
               ),
             ],
           ),
@@ -869,6 +883,7 @@ Widget missionCard({
     ),
   );
 }
+
 //PHASE 3:
 //LOGIC
 //creates second add goal page
@@ -877,11 +892,12 @@ class AddGoalScreen extends StatefulWidget {
   @override
   State<AddGoalScreen> createState() => _AddGoalScreenState();
 }
+
 class _AddGoalScreenState extends State<AddGoalScreen> {
   final _formKey = GlobalKey<FormState>();
   String _subjectName = '';
   int _hours = 0;
-//STATIC: style of add goal page
+  //STATIC: style of add goal page
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -914,7 +930,8 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                             Icons.arrow_back_rounded,
                             color: Color(0xff5E4A69),
                           ),
-                          onPressed: () {// LOGIC: flutter returns to home screen
+                          onPressed: () {
+                            // LOGIC: flutter returns to home screen
                             Navigator.pop(context);
                           },
                         ),
@@ -990,14 +1007,16 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 ),
                               ),
                             ),
-                            validator: (value) {//LOGIC: users cant leave field empty
+                            validator: (value) {
+                              //LOGIC: users cant leave field empty
                               if (value == null || value.trim().isEmpty) {
                                 return "Enter subject name";
                               }
 
                               return null;
                             },
-                            onSaved: (value) {// LOGIC : returns value when saved
+                            onSaved: (value) {
+                              // LOGIC : returns value when saved
                               _subjectName = value!;
                             },
                           ),
@@ -1030,7 +1049,8 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 ),
                               ),
                             ),
-                            validator: (value) {//LOGIC: users cant leave hours field empty
+                            validator: (value) {
+                              //LOGIC: users cant leave hours field empty
                               if (value == null ||
                                   int.tryParse(value) == null ||
                                   int.parse(value) <= 0) {
@@ -1039,7 +1059,8 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
 
                               return null;
                             },
-                            onSaved: (value) {//LOGIC: returns value when saved 
+                            onSaved: (value) {
+                              //LOGIC: returns value when saved
                               _hours = int.parse(value!);
                             },
                           ),
@@ -1056,7 +1077,8 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
-                              onPressed: () {//LOGIC: returns to home screen and updates list and database
+                              onPressed: () {
+                                //LOGIC: returns to home screen and updates list and database
                                 if (_formKey.currentState!.validate()) {
                                   _formKey.currentState!.save();
                                   Navigator.pop(context, {
