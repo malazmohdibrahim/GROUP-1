@@ -1,25 +1,31 @@
+//Phase 1&2:
+//STATIC
+//import flutter design element
 import 'dart:ui' as ui;
-
+// LOGIC: Helps create correct database file paths regardless of the operating system.
 import 'package:flutter/material.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
-
-import 'splash_screen.dart';
+import 'splash_screen.dart'; //connects home screen and splash screen
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
-
+//LOGIC
+//  Start the Flutter application and loads the root widget.
 void main() {
   runApp(const StudyPlannerApp());
 }
 
+//STATIC
+// we create then entire app as a stateless widget because the background never changes
 class StudyPlannerApp extends StatelessWidget {
   const StudyPlannerApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // LOGIC: Returns the Material application wrapper.
       navigatorKey: appNavigatorKey,
-      debugShowCheckedModeBanner: false,
+      debugShowCheckedModeBanner:
+          false, // LOGIC: removes debug from top rigth corner
       title: 'Study Planner App',
       theme: ThemeData(
         useMaterial3: true,
@@ -29,40 +35,54 @@ class StudyPlannerApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xffC5B5D5),
       ),
-      home: const SplashScreen(),
+      home:
+          const SplashScreen(), //LOGIC: tells flutter to always start with splash screen
       routes: {'/home': (context) => const HomeScreen()},
     );
   }
-}
+} //phase 5:
 
+//LOGIC
+//handles permanent data storage using SQLite
+// allows creating, saving, updating and deleting missions
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
-  static Database? _database;
-
+  static final DatabaseHelper instance =
+      DatabaseHelper._init(); // LOGIC: ensures only one database instance
+  static Database?
+  _database; // Stores the database connection as it is not created immediately
+  // Creates or opens the local SQLite database everytime the application starts.
   DatabaseHelper._init();
-
   Future<Database> get database async {
+    //  If database already exists, it returns it.Otherwise, it creates a new one.
     if (_database != null) return _database!;
-
     _database = await _initDatabase();
-    return _database!;
-  }
+    return _database!; // Returns the active database connection.
+  } // LOGIC:
 
+  // Creates the SQLite database file.
   Future<Database> _initDatabase() async {
-    final databasePath = await getDatabasesPath();
-    final path = join(databasePath, 'study_planner.db');
+    final databasePath =
+        await getDatabasesPath(); //waits for the path check to be complete
+    final path = join(
+      databasePath,
+      'study_planner.db',
+    ); // Creates the complete path of the database file.
 
     return await openDatabase(
       path,
       version: 1,
-      onCreate: _createDatabase,
+      onCreate: _createDatabase, // Function called when database is created.
       onOpen: (db) async {
+        // Runs every time database opens.
         await _createDatabase(db, 1);
       },
     );
   }
 
+  // LOGIC:
+  // Create
   Future<void> _createDatabase(Database db, int version) async {
+    // Executes SQL command to create the goals table.
     await db.execute('''
       CREATE TABLE IF NOT EXISTS goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,9 +93,11 @@ class DatabaseHelper {
     ''');
   }
 
+  // LOGIC:
+  // Insert
   Future<int> insertGoal({required String subject, required int hours}) async {
-    final db = await instance.database;
-
+    final db = await instance.database; //get connection first
+    // Inserts a new row into the goals table and Returns the ID of the inserted goal.
     return await db.insert('goals', {
       'subject': subject,
       'hours': hours,
@@ -83,30 +105,41 @@ class DatabaseHelper {
     });
   }
 
+  // LOGIC:
+  // Retrieve (SELECT)
   Future<List<Map<String, dynamic>>> getGoals() async {
-    final db = await instance.database;
-
+    final db = await instance.database; // get connection first
+    // Reads all rows from goals table and Newest goals appear first.
     return await db.query('goals', orderBy: 'id DESC');
   }
 
+  // LOGIC:
+  // Update.
   Future<int> updateGoalDone({required int id, required bool done}) async {
-    final db = await instance.database;
+    final db = await instance.database; // open connection
 
     return await db.update(
+      // Updates the selected goal.
       'goals',
-      {'done': done ? 1 : 0},
+      {
+        'done': done ? 1 : 0,
+      }, // LOGIC:Converts Boolean value into SQLite integer.
       where: 'id = ?',
-      whereArgs: [id],
+      whereArgs: [id], // Sends ID value safely into SQL query.
     );
-  }
+  } //LOGIC
 
+  //DELETE
   Future<int> deleteGoal(int id) async {
     final db = await instance.database;
-
+    // Removes the selected goal using its ID.
     return await db.delete('goals', where: 'id = ?', whereArgs: [id]);
   }
 }
 
+// LOGIC:
+// StatefulWidget is used because this screen changes
+// when goals are added, completed, or deleted.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -115,59 +148,66 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Temporary list holding goals currently displayed the Data comes from SQLite database.
   final List<Map<String, dynamic>> _missions = [];
 
   @override
   void initState() {
+    // Runs automatically when screen is created.
     super.initState();
     _loadGoals();
   }
 
+  //LOGIC: Reads goals from SQLite and converts them into objects used by the UI.
   Future<void> _loadGoals() async {
-    final savedGoals = await DatabaseHelper.instance.getGoals();
-
-    if (!mounted) return;
-
+    final savedGoals = await DatabaseHelper.instance
+        .getGoals(); // Gets saved goals from database.
+    if (!mounted) return; // Prevents updating screen if it was removed.
     setState(() {
+      // rebuilds screen everytime a change occurs
       _missions.clear();
-
+      // Loops through every saved goal.
       for (final goal in savedGoals) {
         final isDone = goal['done'] == 1;
         final hours = goal['hours'] as int;
-
+        // LOGIC: Adds database goal into the screen list.
         _missions.add({
           'id': goal['id'],
           'title': goal['subject'],
           'subtitle': isDone ? 'Completed!' : '$hours Hours',
           'icon': Icons.menu_book,
           'progress': isDone ? 1.0 : 0.0,
-          'done': isDone,
+          'done': isDone, //stors comopletion logic (defined earlier)
           'hours': hours,
         });
       }
     });
-  }
+  } //PHASE 2:
 
+  //LOGIC
+  //delete mission function deletes from the list and the database
   Future<void> _deleteMission(int index) async {
     final id = _missions[index]['id'] as int;
-
-    await DatabaseHelper.instance.deleteGoal(id);
-
-    if (!mounted) return;
-
+    await DatabaseHelper.instance.deleteGoal(
+      id,
+    ); //calls the delete function from the databse
+    if (!mounted)
+      return; // Checks if the widget is still active before updating UI.
     setState(() {
-      _missions.removeWhere((mission) => mission['id'] == id);
+      _missions.removeWhere(
+        (mission) => mission['id'] == id,
+      ); // Removes the selected mission from displayed list.
     });
   }
 
+  //STATIC
+  //UI design and animation of the popup card
   void _showCompletedDialog(String title) {
     final dialogContext = appNavigatorKey.currentContext;
-
     if (dialogContext == null) return;
-
     showGeneralDialog(
       context: dialogContext,
-      barrierDismissible: true,
+      barrierDismissible: true, //closes tab when users click anywhere
       barrierLabel: 'Mission completed',
       barrierColor: Colors.black.withOpacity(.18),
       transitionDuration: const Duration(milliseconds: 260),
@@ -234,6 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
+                          //LOGIC: string interpolation
                           "$title is done. Proud of you, keep this energy going!",
                           textAlign: TextAlign.center,
                           style: const TextStyle(
@@ -256,6 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             onPressed: () {
+                              // LOGIC: Removes popup from screen.
                               Navigator.pop(popupContext);
                             },
                             child: const Text(
@@ -275,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         );
-      },
+      }, //STATIC: animation
       transitionBuilder: (popupContext, animation, secondaryAnimation, child) {
         final scaleAnimation = Tween<double>(begin: .88, end: 1).animate(
           CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
@@ -287,17 +329,19 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
-  }
+  } //LOGIC
 
+  // function for changing mission state
   Future<void> _toggleMissionDone(int index) async {
-    final id = _missions[index]['id'] as int;
+    final id =
+        _missions[index]['id']
+            as int; // Gets the unique database ID of the selected mission.
     final title = _missions[index]['title'].toString();
     final wasDone = _missions[index]['done'] == true;
-    final newDoneValue = !wasDone;
-
+    final newDoneValue = !wasDone; // Reverses the current state.
     setState(() {
-      _missions[index]['done'] = newDoneValue;
-
+      _missions[index]['done'] =
+          newDoneValue; // Saves the new completion status.
       if (newDoneValue) {
         _missions[index]['progress'] = 1.0;
         _missions[index]['subtitle'] = 'Completed!';
@@ -308,20 +352,26 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     if (newDoneValue) {
-      _showCompletedDialog(title);
+      _showCompletedDialog(title); // tells flutter to show the popup animation
     }
-
+    //saves update in database
     await DatabaseHelper.instance.updateGoalDone(id: id, done: newDoneValue);
   }
 
+  //PHASE 4:
+  // LOGIC:
+  //1.  using fold dunction to calculate total hours
   int get _totalHours {
     return _missions.fold(0, (sum, item) => sum + (item['hours'] as int));
   }
 
+  //2. calculates total number of missions
   int get _completedCount {
     return _missions.where((item) => item['done'] == true).length;
   }
 
+  //STATIC
+  //builds entire UI of homescreen
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -344,15 +394,20 @@ class _HomeScreenState extends State<HomeScreen> {
           elevation: 0,
           backgroundColor: Colors.transparent,
           onPressed: () async {
+            //PHASE 3:
+            // LOGIC:Opens Add Goal screen.
             final newGoal = await Navigator.push(
+              // Waits until AddGoalScreen returns data.
               context,
               MaterialPageRoute(builder: (context) => const AddGoalScreen()),
             );
 
             if (newGoal != null) {
-              final newMission = Map<String, dynamic>.from(newGoal as Map);
+              final newMission = Map<String, dynamic>.from(
+                newGoal as Map,
+              ); //LOGIC Converts returned object into a Map.;
 
-              final id = await DatabaseHelper.instance.insertGoal(
+              final id = await DatabaseHelper.instance.insertGoal(//LOGIC : CALLS  INSERT FUNCTION I DATABSE
                 subject: newMission['title'].toString(),
                 hours: newMission['hours'] as int,
               );
@@ -361,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               if (!mounted) return;
 
-              setState(() {
+              setState(() {// reload page
                 _missions.insert(0, newMission);
               });
             }
@@ -578,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.track_changes_rounded,
-                          number: "${_missions.length}",
+                          number: "${_missions.length}",//LOGIC: flutter reads from  list
                           title: "Goals",
                         ),
                       ),
@@ -586,7 +641,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.hourglass_bottom_rounded,
-                          number: "$_totalHours",
+                          number: "$_totalHours",,//LOGIC: flutter reads from  total hour function
                           title: "Hours",
                         ),
                       ),
@@ -594,7 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.check_circle_rounded,
-                          number: "$_completedCount",
+                          number: "$_completedCount",,//LOGIC: flutter reads from completed  function
                           title: "Done",
                         ),
                       ),
@@ -635,8 +690,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               icon: mission['icon'],
                               progress: mission['progress'],
                               isDone: mission['done'],
-                              onToggleDone: () => _toggleMissionDone(index),
-                              onDelete: () => _deleteMission(index),
+                              onToggleDone: () => _toggleMissionDone(index),//LOGIC : flutters executes toggle function
+                              onDelete: () => _deleteMission(index),//LOGIC: flutter executes delete function
                             );
                           }),
                         ),
@@ -650,7 +705,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
+//STATIC
+//reusable widget with specific UI elements
 Widget glassCard({required Widget child}) {
   return ClipRRect(
     borderRadius: BorderRadius.circular(24),
@@ -675,7 +731,7 @@ Widget glassCard({required Widget child}) {
     ),
   );
 }
-
+//STATIC 
 class StatCardWidget extends StatelessWidget {
   final IconData icon;
   final String number;
@@ -687,10 +743,10 @@ class StatCardWidget extends StatelessWidget {
     required this.number,
     required this.title,
   });
-
+///STATIC
   @override
   Widget build(BuildContext context) {
-    return glassCard(
+    return glassCard(// type of reusable glass card widget
       child: Column(
         children: [
           Icon(icon, color: const Color(0xffA87935), size: 26),
@@ -719,7 +775,7 @@ class StatCardWidget extends StatelessWidget {
     );
   }
 }
-
+//STATIC 
 Widget missionCard({
   required String title,
   required String subtitle,
@@ -804,7 +860,7 @@ Widget missionCard({
                   color: Color(0xffC98A8A),
                   size: 21,
                 ),
-                onPressed: onDelete,
+                onPressed: onDelete,// LOGIC 
               ),
             ],
           ),
@@ -813,19 +869,19 @@ Widget missionCard({
     ),
   );
 }
-
+//PHASE 3:
+//LOGIC
+//creates second add goal page
 class AddGoalScreen extends StatefulWidget {
   const AddGoalScreen({super.key});
-
   @override
   State<AddGoalScreen> createState() => _AddGoalScreenState();
 }
-
 class _AddGoalScreenState extends State<AddGoalScreen> {
   final _formKey = GlobalKey<FormState>();
   String _subjectName = '';
   int _hours = 0;
-
+//STATIC: style of add goal page
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -858,7 +914,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                             Icons.arrow_back_rounded,
                             color: Color(0xff5E4A69),
                           ),
-                          onPressed: () {
+                          onPressed: () {// LOGIC: flutter returns to home screen
                             Navigator.pop(context);
                           },
                         ),
@@ -934,14 +990,14 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 ),
                               ),
                             ),
-                            validator: (value) {
+                            validator: (value) {//LOGIC: users cant leave field empty
                               if (value == null || value.trim().isEmpty) {
                                 return "Enter subject name";
                               }
 
                               return null;
                             },
-                            onSaved: (value) {
+                            onSaved: (value) {// LOGIC : returns value when saved
                               _subjectName = value!;
                             },
                           ),
@@ -974,7 +1030,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 ),
                               ),
                             ),
-                            validator: (value) {
+                            validator: (value) {//LOGIC: users cant leave hours field empty
                               if (value == null ||
                                   int.tryParse(value) == null ||
                                   int.parse(value) <= 0) {
@@ -983,7 +1039,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
 
                               return null;
                             },
-                            onSaved: (value) {
+                            onSaved: (value) {//LOGIC: returns value when saved 
                               _hours = int.parse(value!);
                             },
                           ),
@@ -1000,10 +1056,9 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
-                              onPressed: () {
+                              onPressed: () {//LOGIC: returns to home screen and updates list and database
                                 if (_formKey.currentState!.validate()) {
                                   _formKey.currentState!.save();
-
                                   Navigator.pop(context, {
                                     'title': _subjectName,
                                     'subtitle': '$_hours Hours',
