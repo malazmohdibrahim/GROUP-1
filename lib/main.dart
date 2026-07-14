@@ -649,7 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: StatCardWidget(
                           icon: Icons.check_circle_rounded,
-                          number: "$_completedCount",,//LOGIC: flutter reads from completed  function
+                          number: "$_completedCount",//LOGIC: flutter reads from completed  function
                           title: "Done",
                         ),
                       ),
