@@ -31,7 +31,7 @@ class _SplashScreenState extends State<SplashScreen> {
               gaplessPlayback: true,
             ),
           ),
-          Container(color: Colors.black.withOpacity(0.15)),
+          Container(color: Colors.black.withValues(alpha: 0.15)),
           const SafeArea(
             child: Center(
               child: Column(

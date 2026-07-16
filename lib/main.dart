@@ -1,14 +1,14 @@
-//Phase 1&2:
+﻿//Phase 1&2:
 //STATIC
 //import flutter design element
+import 'dart:convert';
 import 'dart:ui' as ui;
-// LOGIC: Helps create correct database file paths regardless of the operating system.
 import 'package:flutter/material.dart';
-import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:http/http.dart' as http;
 import 'splash_screen.dart'; //connects home screen and splash screen
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 //LOGIC
 //  Start the Flutter application and loads the root widget.
 void main() {
@@ -19,6 +19,7 @@ void main() {
 // we create then entire app as a stateless widget because the background never changes
 class StudyPlannerApp extends StatelessWidget {
   const StudyPlannerApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -42,98 +43,108 @@ class StudyPlannerApp extends StatelessWidget {
   }
 } //phase 5:
 
+//PHASE 5:
 //LOGIC
-//handles permanent data storage using SQLite
-// allows creating, saving, updating and deleting missions
-class DatabaseHelper {
-  static final DatabaseHelper instance =
-      DatabaseHelper._init(); // LOGIC: ensures only one database instance
-  static Database?
-  _database; // Stores the database connection as it is not created immediately
-  // Creates or opens the local SQLite database everytime the application starts.
-  DatabaseHelper._init();
-  Future<Database> get database async {
-    //  If database already exists, it returns it.Otherwise, it creates a new one.
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!; // Returns the active database connection.
-  } // LOGIC:
+// Handles permanent data storage using the online MySQL API.
+// Flutter sends HTTP requests to PHP files, and PHP communicates with MySQL.
+class MySqlApiHelper {
+  static final MySqlApiHelper instance = MySqlApiHelper._init();
 
-  // Creates the SQLite database file.
-  Future<Database> _initDatabase() async {
-    final databasePath =
-        await getDatabasesPath(); //waits for the path check to be complete
-    final path = join(
-      databasePath,
-      'study_planner.db',
-    ); // Creates the complete path of the database file.
+  static const String _baseUrl =
+      'https://aura-tech.infinityfree.io/study_planner_api';
 
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _createDatabase, // Function called when database is created.
-      onOpen: (db) async {
-        // Runs every time database opens.
-        await _createDatabase(db, 1);
-      },
-    );
+  MySqlApiHelper._init();
+
+  String _shortText(String text) {
+    final cleaned = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (cleaned.length <= 180) return cleaned;
+    return '${cleaned.substring(0, 180)}...';
   }
 
-  // LOGIC:
-  // Create
-  Future<void> _createDatabase(Database db, int version) async {
-    // Executes SQL command to create the goals table.
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        subject TEXT NOT NULL,
-        hours INTEGER NOT NULL,
-        done INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
+  Map<String, dynamic> _decodeResponse(http.Response response) {
+    final body = response.body.trim();
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Server error ${response.statusCode}: ${_shortText(body)}',
+      );
+    }
+
+    try {
+      final decodedData = jsonDecode(body);
+      if (decodedData is Map<String, dynamic>) {
+        return decodedData;
+      }
+
+      throw Exception(
+        'API returned JSON, but not an object: ${_shortText(body)}',
+      );
+    } catch (error) {
+      throw Exception(
+        'API did not return JSON. First response text: ${_shortText(body)}',
+      );
+    }
   }
 
   // LOGIC:
   // Insert
   Future<int> insertGoal({required String subject, required int hours}) async {
-    final db = await instance.database; //get connection first
-    // Inserts a new row into the goals table and Returns the ID of the inserted goal.
-    return await db.insert('goals', {
-      'subject': subject,
-      'hours': hours,
-      'done': 0,
-    });
+    final response = await http.post(
+      Uri.parse('$_baseUrl/add_goal.php'),
+      body: {'subject': subject, 'hours': hours.toString()},
+    );
+
+    final data = _decodeResponse(response);
+    if (data['success'] == true) {
+      return int.parse(data['id'].toString());
+    }
+
+    throw Exception(data['message'] ?? 'Failed to add goal');
   }
 
   // LOGIC:
   // Retrieve (SELECT)
   Future<List<Map<String, dynamic>>> getGoals() async {
-    final db = await instance.database; // get connection first
-    // Reads all rows from goals table and Newest goals appear first.
-    return await db.query('goals', orderBy: 'id DESC');
+    final response = await http.get(Uri.parse('$_baseUrl/get_goals.php'));
+    final data = _decodeResponse(response);
+
+    if (data['success'] == true) {
+      final goals = data['goals'] as List<dynamic>;
+      return goals.map((goal) => Map<String, dynamic>.from(goal)).toList();
+    }
+
+    throw Exception(data['message'] ?? 'Failed to load goals');
   }
 
   // LOGIC:
-  // Update.
+  // Update
   Future<int> updateGoalDone({required int id, required bool done}) async {
-    final db = await instance.database; // open connection
-
-    return await db.update(
-      // Updates the selected goal.
-      'goals',
-      {
-        'done': done ? 1 : 0,
-      }, // LOGIC:Converts Boolean value into SQLite integer.
-      where: 'id = ?',
-      whereArgs: [id], // Sends ID value safely into SQL query.
+    final response = await http.post(
+      Uri.parse('$_baseUrl/update_goal.php'),
+      body: {'id': id.toString(), 'done': done ? '1' : '0'},
     );
-  } //LOGIC
 
-  //DELETE
+    final data = _decodeResponse(response);
+    if (data['success'] == true) {
+      return 1;
+    }
+
+    throw Exception(data['message'] ?? 'Failed to update goal');
+  }
+
+  // DELETE
   Future<int> deleteGoal(int id) async {
-    final db = await instance.database;
-    // Removes the selected goal using its ID.
-    return await db.delete('goals', where: 'id = ?', whereArgs: [id]);
+    final response = await http.post(
+      Uri.parse('$_baseUrl/delete_goal.php'),
+      body: {'id': id.toString()},
+    );
+
+    final data = _decodeResponse(response);
+    if (data['success'] == true) {
+      return 1;
+    }
+
+    throw Exception(data['message'] ?? 'Failed to delete goal');
   }
 }
 
@@ -148,7 +159,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Temporary list holding goals currently displayed the Data comes from SQLite database.
+  // List holding goals currently displayed. The data comes from the online MySQL API.
   final List<Map<String, dynamic>> _missions = [];
 
   @override
@@ -158,46 +169,75 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadGoals();
   }
 
-  //LOGIC: Reads goals from SQLite and converts them into objects used by the UI.
+  //LOGIC: Reads goals from the MySQL API and converts them into objects used by the UI.
   Future<void> _loadGoals() async {
-    final savedGoals = await DatabaseHelper.instance
-        .getGoals(); // Gets saved goals from database.
-    if (!mounted) return; // Prevents updating screen if it was removed.
-    setState(() {
-      // rebuilds screen everytime a change occurs
-      _missions.clear();
-      // Loops through every saved goal.
-      for (final goal in savedGoals) {
-        final isDone = goal['done'] == 1;
-        final hours = goal['hours'] as int;
-        // LOGIC: Adds database goal into the screen list.
-        _missions.add({
-          'id': goal['id'],
-          'title': goal['subject'],
-          'subtitle': isDone ? 'Completed!' : '$hours Hours',
-          'icon': Icons.menu_book,
-          'progress': isDone ? 1.0 : 0.0,
-          'done': isDone, //stors comopletion logic (defined earlier)
-          'hours': hours,
-        });
-      }
-    });
+    try {
+      final savedGoals = await MySqlApiHelper.instance
+          .getGoals(); // Gets saved goals from the API.
+      if (!mounted) return; // Prevents updating screen if it was removed.
+
+      setState(() {
+        // rebuilds screen everytime a change occurs
+        _missions.clear();
+
+        // Loops through every saved goal.
+        for (final goal in savedGoals) {
+          final isDone = int.parse(goal['done'].toString()) == 1;
+          final hours = int.parse(goal['hours'].toString());
+
+          // LOGIC: Adds database goal into the screen list.
+          _missions.add({
+            'id': int.parse(goal['id'].toString()),
+            'title': goal['subject'].toString(),
+            'subtitle': isDone ? 'Completed!' : '$hours Hours',
+            'icon': Icons.menu_book,
+            'progress': isDone ? 1.0 : 0.0,
+            'done': isDone, //stores completion logic
+            'hours': hours,
+          });
+        }
+      });
+    } catch (error) {
+      _showErrorMessage('Load error: $error');
+    }
+  }
+
+  void _showErrorMessage(String message) {
+    final snackContext = appNavigatorKey.currentContext;
+    if (snackContext == null) return;
+
+    ScaffoldMessenger.of(snackContext).showSnackBar(
+      SnackBar(
+        content: Text(message, maxLines: 5, overflow: TextOverflow.ellipsis),
+        backgroundColor: const Color(0xffC98A8A),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 7),
+      ),
+    );
   } //PHASE 2:
 
   //LOGIC
   //delete mission function deletes from the list and the database
   Future<void> _deleteMission(int index) async {
     final id = _missions[index]['id'] as int;
-    await DatabaseHelper.instance.deleteGoal(
-      id,
-    ); //calls the delete function from the databse
-    if (!mounted)
-      return; // Checks if the widget is still active before updating UI.
-    setState(() {
-      _missions.removeWhere(
-        (mission) => mission['id'] == id,
-      ); // Removes the selected mission from displayed list.
-    });
+
+    try {
+      await MySqlApiHelper.instance.deleteGoal(
+        id,
+      ); //calls the delete function from the API
+
+      if (!mounted) {
+        return;
+      } // Checks if the widget is still active before updating UI.
+
+      setState(() {
+        _missions.removeWhere(
+          (mission) => mission['id'] == id,
+        ); // Removes the selected mission from displayed list.
+      });
+    } catch (error) {
+      _showErrorMessage('Delete error: $error');
+    }
   }
 
   //STATIC
@@ -205,11 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showCompletedDialog(String title) {
     final dialogContext = appNavigatorKey.currentContext;
     if (dialogContext == null) return;
+
     showGeneralDialog(
       context: dialogContext,
       barrierDismissible: true, //closes tab when users click anywhere
       barrierLabel: 'Mission completed',
-      barrierColor: Colors.black.withOpacity(.18),
+      barrierColor: Colors.black.withValues(alpha: .18),
       transitionDuration: const Duration(milliseconds: 260),
       pageBuilder: (popupContext, animation, secondaryAnimation) {
         return Center(
@@ -225,15 +266,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     constraints: const BoxConstraints(maxWidth: 340),
                     padding: const EdgeInsets.all(26),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(.90),
+                      color: Colors.white.withValues(alpha: .90),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
-                        color: Colors.white.withOpacity(.95),
+                        color: Colors.white.withValues(alpha: .95),
                         width: 1.2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xff8D79A0).withOpacity(.18),
+                          color: const Color(0xff8D79A0).withValues(alpha: .18),
                           blurRadius: 26,
                           offset: const Offset(0, 14),
                         ),
@@ -250,7 +291,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: const Color(0xffCDE7BE),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xff91B77A).withOpacity(.30),
+                                color: const Color(
+                                  0xff91B77A,
+                                ).withValues(alpha: .30),
                                 blurRadius: 18,
                                 offset: const Offset(0, 8),
                               ),
@@ -338,10 +381,14 @@ class _HomeScreenState extends State<HomeScreen> {
             as int; // Gets the unique database ID of the selected mission.
     final title = _missions[index]['title'].toString();
     final wasDone = _missions[index]['done'] == true;
+    final oldSubtitle = _missions[index]['subtitle'].toString();
+    final oldProgress = _missions[index]['progress'] as double;
     final newDoneValue = !wasDone; // Reverses the current state.
+
     setState(() {
       _missions[index]['done'] =
           newDoneValue; // Saves the new completion status.
+
       if (newDoneValue) {
         _missions[index]['progress'] = 1.0;
         _missions[index]['subtitle'] = 'Completed!';
@@ -351,11 +398,26 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    if (newDoneValue) {
-      _showCompletedDialog(title); // tells flutter to show the popup animation
+    try {
+      //saves update in the online database
+      await MySqlApiHelper.instance.updateGoalDone(id: id, done: newDoneValue);
+
+      if (newDoneValue) {
+        _showCompletedDialog(
+          title,
+        ); // tells flutter to show the popup animation
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _missions[index]['done'] = wasDone;
+        _missions[index]['progress'] = oldProgress;
+        _missions[index]['subtitle'] = oldSubtitle;
+      });
+
+      _showErrorMessage('Update error: $error');
     }
-    //saves update in database
-    await DatabaseHelper.instance.updateGoalDone(id: id, done: newDoneValue);
   }
 
   //PHASE 4:
@@ -384,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xffE2B566).withOpacity(.38),
+              color: const Color(0xffE2B566).withValues(alpha: .38),
               blurRadius: 24,
               offset: const Offset(0, 10),
             ),
@@ -407,20 +469,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 newGoal as Map,
               ); //LOGIC Converts returned object into a Map.;
 
-              final id = await DatabaseHelper.instance.insertGoal(
-                //LOGIC : CALLS  INSERT FUNCTION I DATABSE
-                subject: newMission['title'].toString(),
-                hours: newMission['hours'] as int,
-              );
+              try {
+                final id = await MySqlApiHelper.instance.insertGoal(
+                  //LOGIC : calls the insert function in the API
+                  subject: newMission['title'].toString(),
+                  hours: newMission['hours'] as int,
+                );
 
-              newMission['id'] = id;
+                newMission['id'] = id;
 
-              if (!mounted) return;
+                if (!mounted) return;
 
-              setState(() {
-                // reload page
-                _missions.insert(0, newMission);
-              });
+                setState(() {
+                  // reload page
+                  _missions.insert(0, newMission);
+                });
+              } catch (error) {
+                _showErrorMessage('Save error: $error');
+              }
             }
           },
           child: const Icon(
@@ -442,9 +508,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withOpacity(.05),
-                    const Color(0xffC5B5D5).withOpacity(.12),
-                    const Color(0xffBCA8CB).withOpacity(.22),
+                    Colors.white.withValues(alpha: .05),
+                    const Color(0xffC5B5D5).withValues(alpha: .12),
+                    const Color(0xffBCA8CB).withValues(alpha: .22),
                   ],
                 ),
               ),
@@ -491,7 +557,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xffE2B566).withOpacity(.28),
+                              color: const Color(
+                                0xffE2B566,
+                              ).withValues(alpha: .28),
                               blurRadius: 18,
                             ),
                           ],
@@ -528,7 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 BoxShadow(
                                   color: const Color(
                                     0xffE2B566,
-                                  ).withOpacity(.30),
+                                  ).withValues(alpha: .30),
                                   blurRadius: 24,
                                   offset: const Offset(0, 10),
                                 ),
@@ -608,9 +676,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       vertical: 14,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xffFFF8ED).withOpacity(.72),
+                      color: const Color(0xffFFF8ED).withValues(alpha: .72),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: Colors.white.withOpacity(.80)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .80),
+                      ),
                     ),
                     child: const Row(
                       children: [
@@ -726,11 +796,14 @@ Widget glassCard({required Widget child}) {
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          color: Colors.white.withOpacity(.76),
-          border: Border.all(color: Colors.white.withOpacity(.88), width: 1.2),
+          color: Colors.white.withValues(alpha: .76),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: .88),
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xff8D79A0).withOpacity(.13),
+              color: const Color(0xff8D79A0).withValues(alpha: .13),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -889,6 +962,7 @@ Widget missionCard({
 //creates second add goal page
 class AddGoalScreen extends StatefulWidget {
   const AddGoalScreen({super.key});
+
   @override
   State<AddGoalScreen> createState() => _AddGoalScreenState();
 }
@@ -897,6 +971,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
   final _formKey = GlobalKey<FormState>();
   String _subjectName = '';
   int _hours = 0;
+
   //STATIC: style of add goal page
   @override
   Widget build(BuildContext context) {
@@ -908,7 +983,9 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
             child: Image.asset('assets/images/image.jpg', fit: BoxFit.cover),
           ),
           Positioned.fill(
-            child: Container(color: const Color(0xffC5B5D5).withOpacity(.14)),
+            child: Container(
+              color: const Color(0xffC5B5D5).withValues(alpha: .14),
+            ),
           ),
           SafeArea(
             child: SingleChildScrollView(
@@ -919,10 +996,10 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                     children: [
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(.68),
+                          color: Colors.white.withValues(alpha: .68),
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(
-                            color: Colors.white.withOpacity(.80),
+                            color: Colors.white.withValues(alpha: .80),
                           ),
                         ),
                         child: IconButton(
@@ -967,7 +1044,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 BoxShadow(
                                   color: const Color(
                                     0xffE2B566,
-                                  ).withOpacity(.26),
+                                  ).withValues(alpha: .26),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),
@@ -988,7 +1065,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 color: Color(0xff8C7A97),
                               ),
                               filled: true,
-                              fillColor: Colors.white.withOpacity(.80),
+                              fillColor: Colors.white.withValues(alpha: .80),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: BorderSide.none,
@@ -996,7 +1073,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: BorderSide(
-                                  color: Colors.white.withOpacity(.90),
+                                  color: Colors.white.withValues(alpha: .90),
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(
@@ -1030,7 +1107,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                                 color: Color(0xff8C7A97),
                               ),
                               filled: true,
-                              fillColor: Colors.white.withOpacity(.80),
+                              fillColor: Colors.white.withValues(alpha: .80),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: BorderSide.none,
@@ -1038,7 +1115,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: BorderSide(
-                                  color: Colors.white.withOpacity(.90),
+                                  color: Colors.white.withValues(alpha: .90),
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(

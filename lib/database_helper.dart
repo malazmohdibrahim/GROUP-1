@@ -1,68 +1,76 @@
-import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
+import 'dart:convert';
 
+import 'package:http/http.dart' as http;
+
+// Handles permanent data storage using the online MySQL API.
+// Flutter sends requests to PHP files, and PHP communicates with MySQL.
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
 
-  static Database? _database;
+  static const String _baseUrl =
+      'http://aura-tech.infinityfree.io/study_planner_api';
 
   DatabaseHelper._init();
 
-  Future<Database> get database async {
-    if (_database != null) return _database!;
+  Map<String, dynamic> _decodeResponse(http.Response response) {
+    if (response.statusCode != 200) {
+      throw Exception('Server error: ${response.statusCode}');
+    }
 
-    _database = await _initDatabase();
-    return _database!;
-  }
-
-  Future<Database> _initDatabase() async {
-    final databasePath = await getDatabasesPath();
-    final path = join(databasePath, 'study_planner.db');
-
-    return await openDatabase(path, version: 1, onCreate: _createDatabase);
-  }
-
-  Future<void> _createDatabase(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        subject TEXT NOT NULL,
-        hours INTEGER NOT NULL,
-        done INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
+    return jsonDecode(response.body.trim()) as Map<String, dynamic>;
   }
 
   Future<int> insertGoal({required String subject, required int hours}) async {
-    final db = await instance.database;
+    final response = await http.post(
+      Uri.parse('$_baseUrl/add_goal.php'),
+      body: {'subject': subject, 'hours': hours.toString()},
+    );
 
-    return await db.insert('goals', {
-      'subject': subject,
-      'hours': hours,
-      'done': 0,
-    });
+    final data = _decodeResponse(response);
+    if (data['success'] == true) {
+      return int.parse(data['id'].toString());
+    }
+
+    throw Exception(data['message'] ?? 'Failed to add goal');
   }
 
   Future<List<Map<String, dynamic>>> getGoals() async {
-    final db = await instance.database;
+    final response = await http.get(Uri.parse('$_baseUrl/get_goals.php'));
+    final data = _decodeResponse(response);
 
-    return await db.query('goals', orderBy: 'id DESC');
+    if (data['success'] == true) {
+      final goals = data['goals'] as List<dynamic>;
+      return goals.map((goal) => Map<String, dynamic>.from(goal)).toList();
+    }
+
+    throw Exception(data['message'] ?? 'Failed to load goals');
   }
 
   Future<int> updateGoalDone({required int id, required bool done}) async {
-    final db = await instance.database;
-
-    return await db.update(
-      'goals',
-      {'done': done ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
+    final response = await http.post(
+      Uri.parse('$_baseUrl/update_goal.php'),
+      body: {'id': id.toString(), 'done': done ? '1' : '0'},
     );
+
+    final data = _decodeResponse(response);
+    if (data['success'] == true) {
+      return 1;
+    }
+
+    throw Exception(data['message'] ?? 'Failed to update goal');
   }
 
   Future<int> deleteGoal(int id) async {
-    final db = await instance.database;
+    final response = await http.post(
+      Uri.parse('$_baseUrl/delete_goal.php'),
+      body: {'id': id.toString()},
+    );
 
-    return await db.delete('goals', where: 'id = ?', whereArgs: [id]);
+    final data = _decodeResponse(response);
+    if (data['success'] == true) {
+      return 1;
+    }
+
+    throw Exception(data['message'] ?? 'Failed to delete goal');
   }
 }
